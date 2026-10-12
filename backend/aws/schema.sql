@@ -8,15 +8,18 @@ CREATE TABLE IF NOT EXISTS telemetry_logs (
     ram_used_mb BIGINT NOT NULL,
     ram_total_mb BIGINT NOT NULL,
     timestamp BIGINT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    top_processes JSONB
 );
 
--- Future Scope #2: Diagnostic Snapshot column for process-level telemetry
+-- Ensure top_processes column exists if migrating existing table
 ALTER TABLE telemetry_logs ADD COLUMN IF NOT EXISTS top_processes JSONB;
 
+-- Primary query index: supports ?server_id=<id> ORDER BY created_at DESC LIMIT 20
+CREATE INDEX IF NOT EXISTS idx_telemetry_server_created ON telemetry_logs (server_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_telemetry_created_at ON telemetry_logs (created_at DESC);
 
--- Future Scope #3: Remote Process Termination Audit Table
+-- Remote Process Termination Audit Table
 CREATE TABLE IF NOT EXISTS kill_commands (
     id SERIAL PRIMARY KEY,
     instance_id VARCHAR(64) NOT NULL,
@@ -29,6 +32,9 @@ CREATE TABLE IF NOT EXISTS kill_commands (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Ensure status column exists if migrating existing table
 ALTER TABLE kill_commands ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'requested';
 
+-- Audit trail query indexes
+CREATE INDEX IF NOT EXISTS idx_kill_commands_server_created ON kill_commands (instance_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_kill_commands_created_at ON kill_commands (created_at DESC);

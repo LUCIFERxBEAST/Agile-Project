@@ -1,6 +1,6 @@
 # 01. Architecture & System Design
 
-This document details the internal design, algorithms, data flows, and component responsibilities of the Cloud-Native Linux Telemetry System.
+This document details the internal design, algorithms, data flows, and component responsibilities of the Cloud-Native Linux Telemetry & Remote Diagnostics System.
 
 ---
 
@@ -9,27 +9,28 @@ This document details the internal design, algorithms, data flows, and component
 | Layer | Technology | Primary Function |
 | :--- | :--- | :--- |
 | **Telemetry Agent** | C++17, libcurl, nlohmann/json | Low-overhead metric extraction directly from Linux kernel virtual filesystem (`/proc`), JSON formatting, HTTP transport, and persistent offline queue. |
-| **Cloud Compute Host** | Linux / Amazon EC2 (`t2.micro` or `t3.micro`) | Dedicated host running the telemetry agent as a persistent system daemon. |
-| **Process Manager** | Linux `systemd` | Manages daemon life-cycle, automatic boot startup, and instant crash recovery (`Restart=always`). |
-| **API Ingestion** | AWS API Gateway (HTTP API) | Managed entry point providing low-latency, scalable routing for incoming POST and outgoing GET requests. |
-| **Serverless Compute**| AWS Lambda (Python 3.12) | Stateless event handler parsing telemetry payloads, inserting records into PostgreSQL, and serving queries. |
-| **Storage Engine** | Amazon RDS (PostgreSQL 15+) | Managed relational time-series storage preserving historical system utilization logs. |
-| **Client Frontend** | Flutter (Dart), `fl_chart`, `http` | Cross-platform mobile dashboard rendering real-time dual-line graphs (CPU & RAM) and historical logs. |
+| **Cloud Compute Host** | Amazon EC2 (`t3.micro`, `ap-southeast-2`) | Monitored Linux host running the telemetry agent as a persistent system daemon. |
+| **Process Manager** | Linux `systemd` | Manages daemon life-cycle, automatic boot startup, and instant crash recovery (`Restart=always`, `RestartSec=3`). |
+| **API Ingestion** | Amazon API Gateway REST API (`/Prod` Stage) | Managed entry point providing low-latency routing, throttling, usage plan enforcement, and CORS support. |
+| **Serverless Compute**| AWS Lambda (Python 3.12) | Stateless event handler enforcing fail-closed `x-api-key` authentication, database persistence, query serving, and SSM command dispatch. |
+| **Remote Remediation**| AWS Systems Manager (SSM Run Command) | Secure, agentless remote process termination via outbound TLS without open inbound SSH ports (port 22). |
+| **Storage Engine** | Amazon RDS PostgreSQL 16 (as deployed) / PostgreSQL 15 local (`db.t4g.micro`, `ap-southeast-2`) | Managed relational time-series storage preserving system metrics, process snapshots, and remediation audit records. |
+| **Client Frontend** | Flutter (Dart), `fl_chart`, `http`, `crypto` | Cross-platform mobile portal rendering dual-line graphs (CPU & RAM), server filtering, spike alert banners, and guarded kill dialogs. |
 
 ---
 
 ## 2. Layer 1: C++ Telemetry Agent
 
-The agent is located in `backend/src/utility.cpp`. It avoids shell command execution (such as `top` or `vmstat`) to eliminate process spawning overhead and memory bloat.
+The telemetry agent is implemented in `backend/src/utility.cpp`. It queries kernel state directly through `/proc` rather than spawning external processes (`top`, `ps`, `vmstat`), eliminating fork overhead and execution jitter.
 
 ### 2.1 Kernel `/proc` Parsing Engine
 - **CPU Metrics (`/proc/stat`)**:
-  - The first line of `/proc/stat` starts with `cpu` followed by 10 integer tick counts representing time spent in various states:
+  - The first line of `/proc/stat` starts with `cpu` followed by 10 integer tick counters:
     `user`, `nice`, `system`, `idle`, `iowait`, `irq`, `softirq`, `steal`, `guest`, `guest_nice`.
-  - Ticks are accumulated:
+  - Ticks are accumulated across all cores:
     $$\text{Total Ticks} = \sum_{i=0}^{9} \text{tempValue}_i$$
     $$\text{Idle Ticks} = \text{tempValue}_3 (\text{idle}) + \text{tempValue}_4 (\text{iowait})$$
-  - Delta calculation across sampling intervals:
+  - Delta calculation across sampling intervals (default: 5 seconds):
     $$\Delta \text{Total} = \text{currTotal} - \text{prevTotal}$$
     $$\Delta \text{Idle} = \text{currIdle} - \text{prevIdle}$$
     $$\text{CPU In Use \%} = \frac{\Delta \text{Total} - \Delta \text{Idle}}{\Delta \text{Total}} \times 100$$
@@ -37,66 +38,71 @@ The agent is located in `backend/src/utility.cpp`. It avoids shell command execu
 - **Memory Metrics (`/proc/meminfo`)**:
   - Scans key-value pairs line by line looking for:
     - `MemTotal`: Total physical RAM installed in kB.
-    - `MemAvailable`: Estimated amount of memory available for starting new applications without swapping.
+    - `MemAvailable`: Estimated memory available for new applications without swapping.
   - Utilization calculations:
     $$\text{RAM Used (MB)} = \frac{\text{MemTotal} - \text{MemAvailable}}{1024}$$
     $$\text{RAM In Use \%} = \frac{\text{MemTotal} - \text{MemAvailable}}{\text{MemTotal}} \times 100$$
 
-### 2.2 JSON Serialization
-Metrics are packed into standard JSON format using `nlohmann/json`:
-```json
-{
-  "server_id": "beast",
-  "timestamp": 1788748874,
-  "cpu_percent": 4.56,
-  "ram_percent": 70.08,
-  "ram_used_mb": 21691,
-  "ram_total_mb": 30953
-}
-```
+### 2.2 Process Diagnostics (Spike Burst Capture)
+- **Spike Trigger Condition**: CPU utilization `>= 85.0%` for `>= 2 consecutive cycles` (10 seconds minimum sustained load).
+- **Process Scanner (`getTopProcesses`)**:
+  - Iterates `/proc/[pid]/stat` to compute process CPU deltas against the baseline interval:
+    $$\text{Process Total Ticks} = \text{utime} + \text{stime}$$
+    $$\text{Process CPU \%} = \frac{\Delta \text{Process Ticks}}{\Delta \text{Total Ticks}} \times 100$$
+  - Reads `/proc/[pid]/cmdline` to extract the full command line and executable name.
+  - Sorts all active processes descending by CPU utilization and retains the **top 3 processes**.
+  - Attaches the diagnostic snapshot array to the JSON payload: `[{"pid": int, "cmd": string, "cpu": double}, ...]`.
 
-### 2.3 [Future Scope 1] Offline Disk Queue & Auto-Retry Engine
-When network connectivity is lost or the cloud server returns non-200 responses:
-1. **Detection**: `sendTelemetry` tracks `CURLE_OK` and verifies HTTP status codes (`200 <= status < 300`).
-2. **Caching**: If sending fails, `saveToOfflineQueue(jsonString)` appends the payload to `offline_queue.jsonl` (one JSON object per line).
+### 2.3 JSON Serialization & Payload Footprint
+Payloads are serialized using `nlohmann/json` without extraneous whitespace:
+```json
+{"cpu_percent":14.25,"ram_percent":42.85,"ram_total_mb":1024,"ram_used_mb":438,"server_id":"i-0abcdef1234567890","timestamp":1790982052}
+```
+- **Normal (Non-Spike) Payload Size**: Exactly **136 bytes** (compact JSON serialization using a realistic 19-character EC2 instance ID).
+- **Spike Payload Size**: Typically ~250–320 bytes depending on process command-line lengths.
+
+### 2.4 Offline Disk Queue & Auto-Retry Engine
+When network connectivity is unavailable or the API Gateway endpoint returns non-200 responses:
+1. **Detection**: `sendTelemetry` tracks libcurl result codes (`CURLE_OK`) and verifies HTTP status codes (`200 <= status < 300`).
+2. **Persistence**: `saveToOfflineQueue(jsonString)` appends the failed payload to `offline_queue.jsonl` (one JSON object per line).
 3. **Flushing & Recovery**:
-   - At the beginning of each interval, `flushOfflineQueue(apiUrl)` inspects `offline_queue.jsonl`.
-   - If records exist, it sequentially retries transmitting each queued record.
-   - If successful, it removes sent items from the file.
-   - If a failure occurs mid-flush, transmission is paused and remaining items are retained on disk to preserve data ordering without loss.
+   - At the beginning of each 5-second cycle, `flushOfflineQueue(apiUrl, apiKey)` checks `offline_queue.jsonl`.
+   - If records exist, it sequentially retries transmitting each queued record with the `x-api-key` header.
+   - If transmission succeeds, flushed records are removed from the file.
+   - If a failure occurs mid-flush, transmission pauses and remaining items are preserved on disk to prevent telemetry loss.
 
 ---
 
-## 3. Layer 2: AWS Serverless Ingestion & Query Layer
+## 3. Layer 2: AWS Serverless Ingestion, Query & Remediation Layer
 
-The serverless backend is located in `backend/aws/`.
+The backend is implemented in `backend/aws/lambda_function.py` and defined via AWS SAM in `backend/aws/template.yaml`.
 
-### 3.1 AWS API Gateway HTTP API
-- Managed API Gateway providing two routes:
-  - `POST /IngestMetrics`: Ingestion endpoint called by C++ agent.
-  - `GET /GetMetrics`: Retrieval endpoint called by Flutter mobile dashboard.
-- Configured with CORS enabled (`AllowOrigins: *`) for cross-platform access.
+### 3.1 AWS API Gateway REST API (`/Prod` Stage)
+The system provisions an `AWS::Serverless::Api` with stage `Prod`, exposing 4 core endpoints:
+- `POST /Prod/IngestMetrics`: Ingestion endpoint called by C++ telemetry agents.
+- `GET /Prod/GetMetrics`: Telemetry retrieval endpoint called by Flutter mobile clients (supports optional `?server_id=<id>` filter).
+- `GET /Prod/GetServers`: Distinct server discovery endpoint for client-side dropdown population.
+- `POST /Prod/ExecuteCommand`: Remote incident orchestration endpoint for process termination via AWS SSM Run Command.
 
-### 3.2 AWS Lambda Handler (`lambda_function.py`)
-- Python 3.12 runtime with `psycopg2-binary` connection pooling.
-- **`handle_ingest_metrics`**:
-  - Parses event JSON payload.
-  - Executes parameterized SQL `INSERT`:
-    ```sql
-    INSERT INTO telemetry_logs (server_id, cpu_percent, ram_percent, ram_used_mb, ram_total_mb, timestamp)
-    VALUES (%s, %s, %s, %s, %s, %s);
-    ```
-  - Returns HTTP 200 with confirmation message.
-- **`handle_get_metrics`**:
-  - Fetches the most recent 20 metric rows ordered by `created_at DESC`.
-  - Serializes rows into a clean JSON list for the mobile app graph.
+All routes enforce API Key validation via API Gateway Usage Plans and custom Lambda header verification.
+
+### 3.2 Fail-Closed Authentication Model
+- Every request must include the HTTP header `x-api-key: <YOUR_API_KEY>`.
+- **Fail-Closed Guarantee**: Lambda compares the header against the `EXPECTED_API_KEY` environment variable. If `EXPECTED_API_KEY` is unset or empty, Lambda immediately rejects the request with HTTP `500` (`SERVER_MISCONFIGURED`).
+- If the header is missing or mismatching, Lambda returns HTTP `403` (`INVALID_API_KEY`).
+
+### 3.3 Remote Remediation via AWS Systems Manager (SSM)
+- Eliminates inbound SSH port 22 access on monitored nodes.
+- Dispatches shell commands (`kill -15 <pid>` or `kill -9 <pid>`) through SSM Run Command document `AWS-RunShellScript`.
+- Enforces pre-execution audit logging to the `kill_commands` table before command dispatch.
 
 ---
 
 ## 4. Layer 3: Database & Storage Engine
 
-### 4.1 Schema (`schema.sql`)
-The PostgreSQL database table stores time-series telemetry records:
+The storage engine runs on Amazon RDS PostgreSQL (`db.t4g.micro`, `ap-southeast-2`).
+
+### 4.1 Schema Definition (`schema.sql`)
 ```sql
 CREATE TABLE IF NOT EXISTS telemetry_logs (
     id SERIAL PRIMARY KEY,
@@ -106,25 +112,55 @@ CREATE TABLE IF NOT EXISTS telemetry_logs (
     ram_used_mb BIGINT NOT NULL,
     ram_total_mb BIGINT NOT NULL,
     timestamp BIGINT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    top_processes JSONB
+);
+
+-- Primary composite query index for ?server_id=<id> ORDER BY created_at DESC LIMIT 20
+CREATE INDEX IF NOT EXISTS idx_telemetry_server_created ON telemetry_logs (server_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_telemetry_created_at ON telemetry_logs (created_at DESC);
+
+-- Remote Remediation Audit Table
+CREATE TABLE IF NOT EXISTS kill_commands (
+    id SERIAL PRIMARY KEY,
+    instance_id VARCHAR(64) NOT NULL,
+    pid INTEGER NOT NULL,
+    process_name TEXT NOT NULL,
+    requested_signal VARCHAR(16) NOT NULL,
+    allowed BOOLEAN NOT NULL,
+    status VARCHAR(32) DEFAULT 'requested',
+    reason TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_telemetry_created_at ON telemetry_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_kill_commands_server_created ON kill_commands (instance_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_kill_commands_created_at ON kill_commands (created_at DESC);
 ```
-- **Index Optimization**: `idx_telemetry_created_at` provides instantaneous retrieval of the latest telemetry points for real-time dashboard plotting.
 
 ---
 
-## 5. Layer 4: Flutter Mobile Dashboard
+## 5. Layer 4: Flutter Mobile Portal
 
-The client application is located in `flutter mobile frontend/lib/main.dart`.
+The mobile portal is implemented in `flutter mobile frontend/lib/main.dart`.
 
 ### 5.1 Architecture & UI Components
-- **Line Chart View (`fl_chart`)**:
-  - Renders dual curved trendlines: **Cyan** for CPU % and **Orange** for RAM %.
-  - X-axis represents chronological index; Y-axis is scaled from 0% to 100%.
-- **Recent Logs Feed**:
-  - Scrollable `ListView.builder` displaying server ID, exact CPU %, RAM %, and RAM consumed in megabytes.
-- **Refresh & Auto-Reload**:
-  - Floating action button to manually trigger immediate metric reload.
-  - Automatically reverses the data list (`json.decode(response.body).reversed`) so the visual graph flows chronologically left-to-right (oldest to newest).
+- **Server Filter Dropdown (`AppBar`)**:
+  - Automatically queries `GET /Prod/GetServers` and populates a dropdown with available server IDs and an `'All servers'` option.
+  - Selecting a server filters the telemetry graph and logs via `?server_id=<id>`.
+- **Dual-Metric Real-Time Line Graph (`fl_chart`)**:
+  - Renders real-time curved trendlines: **Cyan** for CPU % and **Orange** for RAM %.
+  - X-axis displays chronological timeline; Y-axis is fixed from 0% to 100%.
+- **Dismissible High CPU Spike Alert Banner**:
+  - Automatically detects when `latestRecord['top_processes']` contains high-CPU diagnostics.
+  - Displays banner: `"High CPU detected — top process: <cmd> (<cpu>%)"`.
+  - Provides a "Kill" button and a dismiss button; resets automatically when load normalizes or a new spike occurs.
+- **Kill Process Guardrail Dialog**:
+  - Computes an 8-character cryptographic confirmation code: `sha256('$targetInstanceId:$pid:$cmd')[:8]`.
+  - Requires the operator to enter the 8-character code (or process command) before unlocking the termination button.
+  - Includes a "Force Kill (SIGKILL -9)" checkbox toggle (defaults to graceful `SIGTERM -15`).
+- **Polling & Refresh Timers**:
+  - Telemetry metrics polled every 3 seconds (`Timer.periodic(Duration(seconds: 3))`).
+  - Available servers list refreshed every 12 seconds.
+- **Client Configuration**:
+  - Configurable at build time via `--dart-define=API_BASE_URL=...` (defaulting to live API Gateway endpoint) and `--dart-define=API_KEY=...`.
+  - Includes interactive `LoginScreen` for in-memory API key entry.

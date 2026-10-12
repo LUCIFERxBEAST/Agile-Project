@@ -1,111 +1,65 @@
-# 04. Next Steps & Implementation Roadmap
+# 04. Current Status & Future Engineering Roadmap
 
-This document outlines the exact sequential action plan for **what you need to do next**, followed by the roadmap for implementing the remaining future scope features.
-
----
-
-## 🎯 Phase 1: Immediate Action Checklist (Getting Everything Live)
-
-Follow this step-by-step checklist to deploy and demonstrate the live AWS pipeline:
-
-### Step 1: Set Up AWS Free Tier Resources
-- [ ] Create an AWS Account (if you don't already have one).
-- [ ] Launch an **Amazon RDS PostgreSQL** instance on the Free Tier (`db.t3.micro` or `db.t4g.micro`).
-- [ ] Ensure the RDS security group allows inbound traffic on port `5432`.
-- [ ] Connect with `psql` and execute [`backend/aws/schema.sql`](file:///home/beast/Documents/Software%20Testing/Agile%20Project/backend/aws/schema.sql).
-
-### Step 2: Deploy AWS Serverless Backend
-- [ ] Configure AWS CLI on your system:
-  ```bash
-  aws configure
-  ```
-- [ ] Deploy via AWS SAM:
-  ```bash
-  cd "backend/aws"
-  sam build
-  sam deploy --guided
-  ```
-- [ ] Provide your RDS credentials when prompted.
-- [ ] Copy the generated API Gateway endpoints (`IngestMetricsApiEndpoint` and `GetMetricsApiEndpoint`).
-
-### Step 3: Run the Telemetry Agent
-- [ ] On your Linux machine or an Amazon EC2 Linux instance:
-  ```bash
-  cd "backend/src"
-  g++ -O2 -std=c++17 utility.cpp -o telemetry_agent -lcurl
-  export TELEMETRY_API_URL="<your-IngestMetricsApiEndpoint>"
-  ./telemetry_agent
-  ```
-- [ ] Set up the `systemd` service (`telemetry-agent.service`) so it runs continuously in the background and recovers automatically on crashes.
-
-### Step 4: Run the Flutter Mobile App
-- [ ] Open [`flutter mobile frontend/lib/main.dart`](file:///home/beast/Documents/Software%20Testing/Agile%20Project/flutter%20mobile%20frontend/lib/main.dart#L35).
-- [ ] Paste your `GetMetricsApiEndpoint` into line 35.
-- [ ] Run the mobile dashboard:
-  ```bash
-  cd "flutter mobile frontend"
-  flutter run
-  ```
-- [ ] Confirm the live CPU and RAM charts render the metrics sent by the C++ agent.
+This document outlines the delivered production architecture across all project iterations and defines the engineering roadmap for future enhancements.
 
 ---
 
-## 🚀 Phase 2: Implementing Remaining Future Scope Features
+## 🚦 System Delivery Status Summary
 
-In Review 1, the end-to-end pipeline was completed, and we have now implemented **Future Scope #1 (Offline Queue & Auto-Retry)**. The remaining future scope features from your proposal document are detailed below:
+All core deliverables and previously scoped extensions (Future Scopes 1 through 5) have been fully developed, integrated, verified, and hardened:
 
-### 1. Future Scope #2: Process-Level Diagnostics
-- **Objective**: Capture top resource-consuming task snapshots for root-cause analysis during performance spikes.
-- **How to Implement**:
-  - In `backend/src/utility.cpp`, add a trigger condition: when `cpuInUse > 85.0%` for 2 consecutive cycles.
-  - Read `/proc` directory entries for numeric PIDs (`/proc/[pid]/stat` and `/proc/[pid]/cmdline`).
-  - Sort processes by CPU time consumed.
-  - Append the top 3 rogue processes (`pid`, `process_name`, `%cpu`) into the JSON payload:
-    ```json
-    "top_processes": [
-      {"pid": 1284, "cmd": "stress-ng-cpu", "cpu": 78.4},
-      {"pid": 941,  "cmd": "node",          "cpu": 12.1}
-    ]
-    ```
-  - Store this diagnostic snapshot in RDS and display a warning banner on the Flutter dashboard.
-
-### 2. Future Scope #3: Remote Incident Orchestration (Two-Way Command Channel)
-- **Objective**: Enable remote incident remediation from the mobile dashboard (e.g., kill a rogue process or restart a system service).
-- **How to Implement**:
-  - Create a new API Gateway endpoint `POST /ExecuteCommand`.
-  - Use AWS Systems Manager (SSM) Run Command or an AWS IoT Core MQTT command topic.
-  - On the Flutter app, add an action button next to high-CPU processes: **[Kill Process]**.
-  - Tapping the button dispatches an authorized command to terminate the rogue PID on the EC2 instance.
-
-### 3. Future Scope #4: Security Hardening
-- **Objective**: Add authenticated ingestion, encryption in transit, and least-privilege access controls.
-- **How to Implement**:
-  - Add AWS API Gateway API Key or Lambda Authorizer to `/IngestMetrics` and `/GetMetrics`.
-  - Pass the API Key in the C++ agent HTTP header:
-    ```cpp
-    headers = curl_slist_append(headers, "x-api-key: YOUR_SECRET_KEY");
-    ```
-  - Integrate AWS Cognito or Firebase Auth in the Flutter mobile application so only authenticated engineers can view the metrics dashboard.
-
-### 4. Future Scope #5: Scaling to Multiple Monitored Servers
-- **Objective**: Extend system design to handle multiple servers concurrently.
-- **How to Implement**:
-  - Each agent generates or reads its distinct hostname/instance ID (e.g., `ec2-server-prod-01`, `ec2-server-db-02`).
-  - In the Flutter dashboard, add a server dropdown selector in the AppBar (`DropdownButton<String>`).
-  - Selecting a server filters the line charts to visualize metrics specifically for that server instance.
+| Feature Area | Original Scope | Current Delivery Status | Implementation Details |
+| :--- | :--- | :--- | :--- |
+| **Core End-to-End Pipeline** | Review 1 Baseline | **Delivered** | C++17 agent parsing `/proc`, API Gateway, AWS Lambda (Python 3.12), Amazon RDS PostgreSQL, and Flutter graph UI. |
+| **Future Scope #1: Offline Disk Queue & Auto-Retry** | Network fault tolerance | **Delivered** | Local disk caching in `offline_queue.jsonl` upon network failure; automatic sequential queue flush upon network restoration. |
+| **Future Scope #2: Process-Level Diagnostics** | Spike root-cause capture | **Delivered** | Adaptive diagnostic snapshot triggered when CPU utilization is `>= 85.0%` for `>= 2 consecutive cycles` (10s sustained load); captures top 3 processes (`pid`, `cmd`, `cpu`). |
+| **Future Scope #3: Remote Incident Orchestration** | Remote remediation | **Delivered** | Agentless process termination via AWS Systems Manager (SSM) Run Command (`POST /Prod/ExecuteCommand`) with full audit logging in `kill_commands`. |
+| **Future Scope #4: Security Hardening** | Ingestion & UI security | **Delivered** | Fail-closed `x-api-key` header verification in AWS Lambda; API Gateway Usage Plans; hardened non-root systemd service with `mode 600` environment file. |
+| **Future Scope #5: Multi-Server Monitoring** | Fleet observability | **Delivered** | Server identity discovery (`GET /Prod/GetServers`); AppBar dropdown filter and parameterized queries (`?server_id=<id>`) in Flutter portal. |
 
 ---
 
-## 🎤 Phase 3: Project Presentation & Viva Defense Tips
+## 🛡️ Delivered Architectural Guardrails
 
-When presenting this project for your Agile & DevOps course review:
+For complete details on the remote incident remediation pipeline and 4-layer defense architecture, see [05. Guardrails & Remote Remediation](./05_GUARDRAILS_AND_REMEDIATION.md):
+1. **OS Process Blocklist**: Hardcoded rejection of core system binaries (`systemd`, `init`, `sshd`, `dbus`, `dockerd`, `cron`, `telemetry_agent`, and kernel threads `[...]`), returning HTTP 403.
+2. **2-Minute Spike Telemetry Verification**: Strict database check ensuring requested PID was observed in a recent diagnostic snapshot for that specific host (`created_at >= NOW() - INTERVAL '2 minutes'` with comparison `>=`).
+3. **Cryptographic SHA-256 Confirmation Token**: 8-character token (`sha256('$targetInstanceId:$pid:$cmd')[:8]`) generated and verified in the Flutter UI before unlocking the Terminate button.
+4. **Comprehensive Audit Trail**: Every execution attempt tracked in PostgreSQL `kill_commands` transitioning from `authorized` to `dispatched` or `failed_dispatch`.
 
-1. **Highlight the Systems Engineering Depth**:
-   - Explain *why* reading `/proc/stat` and `/proc/meminfo` natively in C++ is superior to invoking shell commands (`exec("top")`). C++ eliminates process fork overhead, context switches, and keeps memory footprint under 10 MB.
-2. **Demonstrate Fault Tolerance (Future Scope 1)**:
-   - Disconnect the network (or point to an invalid URL), show that metrics are safely cached into `offline_queue.jsonl`.
-   - Restore the network and show the agent automatically flushing the queued data to AWS without losing a single data point.
-3. **Demonstrate Automated Recovery (systemd)**:
-   - Run `sudo pkill -9 telemetry_agent` in front of the reviewer and show `systemctl status` immediately displaying an active restarted process.
-4. **Demonstrate Real-Time Load Reaction**:
-   - Run `stress-ng --cpu 2 --timeout 30s` on the server and watch the Flutter graph spike live.
+---
+
+## 🔮 Future Scope & Extension Roadmap
+
+With the primary monitoring and remediation systems fully operational, remaining long-term enhancements include:
+
+### 1. Machine Learning Anomaly Detection
+- **Objective**: Identify subtle resource degradation, memory leaks, and anomalous spikes before hard thresholds are crossed.
+- **Approach**:
+  - Deploy lightweight unsupervised models (e.g., Isolation Forests or One-Class SVM) in AWS Lambda or a containerized worker.
+  - Evaluate rolling metric trends (Z-score analysis on CPU derivative and RAM consumption rate).
+  - Surface proactive anomaly warnings on the Flutter dashboard before systems experience service degradation.
+
+### 2. Automated Auto-Kill Remediation Policies
+- **Objective**: Enable zero-touch autonomous mitigation of known unapproved workloads.
+- **Approach**:
+  - Define declarative auto-remediation policies (e.g., automatically dispatch `SIGKILL` if an unapproved binary like a cryptocurrency miner or rogue test runner sustains `>= 95%` CPU for > 60 seconds).
+  - Maintain rigorous safety exemptions for critical production databases and system services.
+  - Broadcast automated remediation events to administrative channels (Slack/PagerDuty via Amazon SNS).
+
+### 3. AWS Fleet Auto-Scaling Integration
+- **Objective**: Bridge host-level telemetry with cloud orchestration.
+- **Approach**:
+  - Export real-time aggregated agent telemetry to custom Amazon CloudWatch Metrics.
+  - Configure CloudWatch Alarms to dynamically adjust AWS Auto Scaling Group capacity (scale-out during high demand, scale-in during idle periods).
+
+---
+
+## 🎤 Presentation & Viva Defense Talking Points
+
+1. **Native C++ Performance vs Scripting Agents**:
+   - Reading `/proc/stat` and `/proc/meminfo` natively eliminates the overhead of subprocessing shell commands (`top`, `ps`). The binary maintains a tiny memory footprint (< 10 MB RAM) and zero baseline CPU load.
+2. **Network Resilience**:
+   - The disk-backed offline queue (`offline_queue.jsonl`) guarantees that intermittent network drops do not result in telemetry blind spots or data loss.
+3. **Defense-in-Depth Remote Remediation**:
+   - Leveraging AWS SSM Run Command provides agentless remediation with zero open inbound ports (port 22 closed), enforced by strict multi-layer guardrails and database audit logging.
