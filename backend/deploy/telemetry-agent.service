@@ -1,0 +1,23 @@
+[Unit]
+Description=Cloud-Native C++ Telemetry Agent Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=telemetry
+Group=telemetry
+WorkingDirectory=/opt/telemetry-agent
+EnvironmentFile=/etc/telemetry-agent/telemetry-agent.env
+ExecStart=/opt/telemetry-agent/telemetry_agent
+Restart=always
+RestartSec=3
+
+# Linux Process & Filesystem Security Sandbox
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/telemetry-agent
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
