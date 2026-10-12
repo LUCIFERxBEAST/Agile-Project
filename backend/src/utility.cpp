@@ -10,7 +10,8 @@
 #include <unordered_map>
 #include <filesystem>
 #include <curl/curl.h>
-#include "nlohmann/json.hpp" 
+#include "nlohmann/json.hpp"
+#include "metrics.hpp" 
 
 using namespace std;
 namespace fs = std::filesystem;
@@ -122,7 +123,7 @@ vector<ProcessCpuInfo> getTopProcesses(long long totalDiff) {
             long long procDiff = totalProc - prevProc;
             if (procDiff < 0) procDiff = 0;
 
-            double procCpu = (double)procDiff / (double)totalDiff * 100.0;
+            double procCpu = metrics::calculateProcessCpuPercent(procDiff, totalDiff);
 
             // Read /proc/[pid]/cmdline for full process command
             string cmdPath = "/proc/" + to_string(pid) + "/cmdline";
@@ -301,8 +302,7 @@ int main() {
         prevTotal = currTotal;
         prevIdle = currIdle;
 
-        double cpuInUse = 0.0;
-        if (totalDiff > 0) cpuInUse = (double)(totalDiff - idleDiff) / totalDiff * 100.0;
+        double cpuInUse = metrics::calculateCpuPercent(totalDiff, idleDiff);
 
         // Scan process hierarchy and get top processes for this interval
         vector<ProcessCpuInfo> topProcesses = getTopProcesses(totalDiff);
@@ -325,12 +325,9 @@ int main() {
             else if (key == "MemAvailable:") { memAvail = value; break; }
         }
 
-        double memInUse = 0.0;
-        long long usedMemMb = 0;
-        if (memTotal > 0) {
-            memInUse = (double)(memTotal - memAvail) / memTotal * 100.0;
-            usedMemMb = (memTotal - memAvail) / 1024;
-        }
+        double memInUse = metrics::calculateRamPercent(memTotal, memAvail);
+        long long usedMemMb = metrics::calculateRamUsedMb(memTotal, memAvail);
+        long long totalMemMb = metrics::calculateRamTotalMb(memTotal);
         
         // 4. Construct JSON
         auto now = chrono::system_clock::now();
@@ -339,10 +336,10 @@ int main() {
         json payload;
         payload["timestamp"] = timestamp;
         payload["server_id"] = serverId; 
-        payload["cpu_percent"] = round(cpuInUse * 100.0) / 100.0; 
-        payload["ram_percent"] = round(memInUse * 100.0) / 100.0;
+        payload["cpu_percent"] = cpuInUse; 
+        payload["ram_percent"] = memInUse;
         payload["ram_used_mb"] = usedMemMb;
-        payload["ram_total_mb"] = memTotal / 1024;
+        payload["ram_total_mb"] = totalMemMb;
 
         // Include top_processes array ONLY when threshold is met (>= 2 consecutive cycles)
         if (highCpuConsecutiveCount >= 2) {
