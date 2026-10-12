@@ -1,0 +1,50 @@
+# Environment & Secrets
+*.pem
+.env
+.env.*
+!.env.example
+!.env.local.example
+samconfig.toml
+
+# AWS & Deployment Packages
+.aws-sam/
+deployment_package.zip
+
+# C++ Build Outputs & Executables
+telemetry_agent
+a.out
+*.o
+*.a
+*.so
+build/
+bin/
+obj/
+
+# Local Telemetry Queue
+offline_queue.jsonl
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.venv
+venv/
+
+# Flutter & Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+*.apk
+*.aab
+local.properties
+.gradle/
+.kotlin/
+
+# IDEs & System
+.idea/
+*.iml
+.DS_Store
+Thumbs.db

@@ -1,0 +1,158 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Cloud-Native Telemetry System AWS Infrastructure Stack with API Key Security & Usage Plan
+
+Parameters:
+  DBHost:
+    Type: String
+    Description: PostgreSQL Database Host (Amazon RDS Endpoint)
+    Default: "your-rds-endpoint.amazonaws.com"
+  DBName:
+    Type: String
+    Description: Database Name
+    Default: "postgres"
+  DBUser:
+    Type: String
+    Description: Database User
+    Default: "postgres"
+  DBPassword:
+    Type: String
+    NoEcho: true
+    Description: Database Password
+    Default: "<DB_PASSWORD>"
+  DBPort:
+    Type: String
+    Description: Database Port
+    Default: "5432"
+  ExpectedApiKey:
+    Type: String
+    NoEcho: true
+    Description: Expected API Key for local/backend verification
+    Default: "<YOUR_API_KEY>"
+
+Globals:
+  Function:
+    Timeout: 10
+    MemorySize: 128
+    Runtime: python3.12
+    Environment:
+      Variables:
+        DB_HOST: !Ref DBHost
+        DB_NAME: !Ref DBName
+        DB_USER: !Ref DBUser
+        DB_PASSWORD: !Ref DBPassword
+        DB_PORT: !Ref DBPort
+        EXPECTED_API_KEY: !Ref ExpectedApiKey
+
+Resources:
+  TelemetryApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,x-api-key'"
+        AllowOrigin: "'*'"
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,x-api-key'"
+              Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
+      Auth:
+        ApiKeyRequired: true
+        UsagePlan:
+          CreateUsagePlan: PER_API
+          UsagePlanName: TelemetryUsagePlan
+          Description: Usage plan with rate limiting and quota for Telemetry API
+          Quota:
+            Limit: 100000
+            Period: MONTH
+          Throttle:
+            BurstLimit: 200
+            RateLimit: 100
+
+  TelemetryApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn:
+      - TelemetryApiProdStage
+    Properties:
+      Name: TelemetryProductionApiKey
+      Description: API Key for C++ Telemetry Agent and Flutter Mobile App
+      Enabled: true
+      StageKeys:
+        - RestApiId: !Ref TelemetryApi
+          StageName: Prod
+
+  TelemetryUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref TelemetryApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref TelemetryApiUsagePlan
+
+  TelemetryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: lambda_function.lambda_handler
+      Description: Telemetry Ingest, Query & Remote Remediation AWS Lambda Function
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ssm:SendCommand
+              Resource:
+                - !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+                - !Sub "arn:aws:ssm:${AWS::Region}::document/AWS-RunShellScript"
+      Events:
+        IngestApi:
+          Type: Api
+          Properties:
+            Path: /IngestMetrics
+            Method: POST
+            RestApiId: !Ref TelemetryApi
+            Auth:
+              ApiKeyRequired: true
+        GetServersApi:
+          Type: Api
+          Properties:
+            Path: /GetServers
+            Method: GET
+            RestApiId: !Ref TelemetryApi
+            Auth:
+              ApiKeyRequired: true
+        GetMetricsApi:
+          Type: Api
+          Properties:
+            Path: /GetMetrics
+            Method: GET
+            RestApiId: !Ref TelemetryApi
+            Auth:
+              ApiKeyRequired: true
+        ExecuteCommandApi:
+          Type: Api
+          Properties:
+            Path: /ExecuteCommand
+            Method: POST
+            RestApiId: !Ref TelemetryApi
+            Auth:
+              ApiKeyRequired: true
+
+Outputs:
+  IngestMetricsApiEndpoint:
+    Description: "REST API endpoint for C++ Telemetry Agent (POST)"
+    Value: !Sub "https://${TelemetryApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/IngestMetrics"
+  GetMetricsApiEndpoint:
+    Description: "REST API endpoint for Flutter Mobile App (GET)"
+    Value: !Sub "https://${TelemetryApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/GetMetrics"
+  ExecuteCommandApiEndpoint:
+    Description: "REST API endpoint for Remote Incident Orchestration (POST)"
+    Value: !Sub "https://${TelemetryApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/ExecuteCommand"
+  ApiKeyId:
+    Description: "API Key ID for authentication"
+    Value: !Ref TelemetryApiKey
+  GetServersApiEndpoint:
+    Description: "REST API endpoint for Distinct Server List (GET)"
+    Value: !Sub "https://${TelemetryApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/GetServers"

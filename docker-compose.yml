@@ -1,0 +1,42 @@
+services:
+  telemetry-db-local:
+    image: postgres:15
+    container_name: telemetry-db-local
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: localdevpass
+      POSTGRES_DB: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/aws/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro,z
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin-local
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@local.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8080:80"
+    depends_on:
+      - telemetry-db-local
+    restart: unless-stopped
+
+  telemetry-agent:
+    build:
+      context: ./backend/src
+      dockerfile: Dockerfile
+    container_name: telemetry-agent-local
+    environment:
+      TELEMETRY_API_URL: ${TELEMETRY_API_URL:-http://host.docker.internal:3000/IngestMetrics}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - telemetry-db-local
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
