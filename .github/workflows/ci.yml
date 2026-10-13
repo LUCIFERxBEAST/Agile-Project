@@ -17,7 +17,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev build-essential
+          sudo apt-get install -y libcurl4-openssl-dev build-essential nlohmann-json3-dev
 
       - name: Compile C++ Telemetry Agent
         run: g++ -O2 -std=c++17 backend/src/utility.cpp -o telemetry_agent -lcurl
@@ -42,7 +42,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install boto3
+          pip install boto3 psycopg2-binary
 
       - name: Run Backend Unit Tests
         env:
@@ -92,4 +92,4 @@ jobs:
           use-installer: true
 
       - name: Validate SAM Template (Lint Mode)
-        run: sam validate --template-file backend/aws/template.yaml --lint
+        run: sam validate --template-file backend/aws/template.yaml --lint --region ap-southeast-2
