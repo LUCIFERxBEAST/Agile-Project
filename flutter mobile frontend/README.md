@@ -19,12 +19,12 @@ A cross-platform real-time monitoring and incident remediation dashboard enginee
 
 ### 1. Run on Linux Desktop
 ```bash
-flutter run -d linux   --dart-define=API_BASE_URL=https://7qw0khxma2.execute-api.ap-southeast-2.amazonaws.com   --dart-define=API_KEY=<YOUR_API_KEY>
+flutter run -d linux   --dart-define=API_BASE_URL=https://<api-id>.execute-api.ap-southeast-2.amazonaws.com   --dart-define=API_KEY=<YOUR_API_KEY>
 ```
 
 ### 2. Build Release Android APK
 ```bash
-flutter build apk --release   --dart-define=API_BASE_URL=https://7qw0khxma2.execute-api.ap-southeast-2.amazonaws.com   --dart-define=API_KEY=<YOUR_API_KEY>
+flutter build apk --release   --dart-define=API_BASE_URL=https://<api-id>.execute-api.ap-southeast-2.amazonaws.com   --dart-define=API_KEY=<YOUR_API_KEY>
 ```
 The resulting APK is generated at:
 `build/app/outputs/flutter-apk/app-release.apk` (copied to project root as `Cloud_Native_Telemetry_App.apk`).

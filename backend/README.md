@@ -43,7 +43,7 @@ backend/
 cd src
 g++ -O2 -std=c++17 utility.cpp -o telemetry_agent -lcurl
 export TELEMETRY_API_KEY="<YOUR_API_KEY>"
-export TELEMETRY_API_URL="https://7qw0khxma2.execute-api.ap-southeast-2.amazonaws.com/IngestMetrics"
+export TELEMETRY_API_URL="https://<api-id>.execute-api.ap-southeast-2.amazonaws.com/IngestMetrics"
 export TELEMETRY_SERVER_ID="i-0e29cd982f920c54c"
 ./telemetry_agent
 ```
