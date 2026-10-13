@@ -19,13 +19,19 @@ A cross-platform real-time monitoring and incident remediation dashboard enginee
 
 ### 1. Run on Linux Desktop
 ```bash
-flutter run -d linux   --dart-define=API_BASE_URL=https://<api-id>.execute-api.ap-southeast-2.amazonaws.com   --dart-define=API_KEY=<YOUR_API_KEY>
+flutter run -d linux \
+  --dart-define=API_BASE_URL=https://<api-id>.execute-api.ap-southeast-2.amazonaws.com/Prod \
+  --dart-define=API_KEY=<YOUR_API_KEY>
 ```
 
 ### 2. Build Release Android APK
 ```bash
-flutter build apk --release   --dart-define=API_BASE_URL=https://<api-id>.execute-api.ap-southeast-2.amazonaws.com   --dart-define=API_KEY=<YOUR_API_KEY>
+flutter build apk --release \
+  --dart-define=API_BASE_URL=https://<api-id>.execute-api.ap-southeast-2.amazonaws.com/Prod \
+  --dart-define=API_KEY=<YOUR_API_KEY>
 ```
+
+> **Important (`/Prod` Stage Requirement)**: `main.dart` expects `API_BASE_URL` **with the `/Prod` suffix** (e.g., `https://<api-id>.execute-api.ap-southeast-2.amazonaws.com/Prod`). The app directly appends `/GetMetrics`, `/GetServers`, and `/ExecuteCommand` to `API_BASE_URL`. Omitting `/Prod` will cause AWS API Gateway to reject requests with `403 Missing Authentication Token`.
 The resulting APK is generated at:
 `build/app/outputs/flutter-apk/app-release.apk` (copied to project root as `Cloud_Native_Telemetry_App.apk`).
 

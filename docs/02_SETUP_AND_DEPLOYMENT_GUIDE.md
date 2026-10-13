@@ -195,5 +195,8 @@ flutter run \
   --dart-define=API_KEY="<YOUR_API_KEY>"
 ```
 
+> [!IMPORTANT]
+> **API_BASE_URL Stage Suffix (`/Prod`)**: `main.dart` directly appends `/GetMetrics`, `/GetServers`, and `/ExecuteCommand` to `API_BASE_URL`. Therefore, `API_BASE_URL` **must be specified with the `/Prod` suffix** (e.g., `https://<api-id>.execute-api.ap-southeast-2.amazonaws.com/Prod`). Omitting `/Prod` results in API Gateway routing errors (`403 Missing Authentication Token`).
+
 ### 5.2 Interactive Login Gate
 If launched without `--dart-define=API_KEY`, the mobile app displays the `LoginScreen`. Enter your API Key into the secured input field. The key is retained strictly in-memory during the session (never cached to plaintext storage) and transmitted in the `x-api-key` header on all telemetry and remediation requests.
