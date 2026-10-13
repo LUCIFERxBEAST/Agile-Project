@@ -390,7 +390,7 @@ def handle_execute_command(event):
 
         # Dispatch SSM Run Command with dedicated try/except and row update
         try:
-            ssm = boto3.client("ssm", region_name=os.environ.get("AWS_REGION", "us-east-1"))
+            ssm = boto3.client("ssm", region_name=os.environ.get("AWS_REGION"))
             response = ssm.send_command(
                 InstanceIds=[instance_id_str],
                 DocumentName="AWS-RunShellScript",

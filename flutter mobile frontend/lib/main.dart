@@ -270,7 +270,7 @@ class _TelemetryScreenState extends State<TelemetryScreen> {
     'API_BASE_URL',
     defaultValue: String.fromEnvironment(
       'API_URL',
-      defaultValue: 'https://7qw0khxma2.execute-api.ap-southeast-2.amazonaws.com',
+      defaultValue: '',
     ),
   );
 
