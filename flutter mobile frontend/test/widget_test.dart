@@ -8,6 +8,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Telemetry Engineer Portal'), findsOneWidget);
+    expect(find.textContaining('API_BASE_URL not configured at build time'), findsOneWidget);
     expect(find.textContaining('API Key not configured at build time'), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
     expect(find.text('Authenticate & Enter'), findsOneWidget);
@@ -138,5 +139,20 @@ void main() {
     await tester.pump();
 
     expect(find.text(testRejectionMsg), findsOneWidget);
+  });
+
+  testWidgets('TelemetryScreen displays clear API_BASE_URL not configured message when empty', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TelemetryScreen(
+          apiKey: 'test-api-key',
+          onLogout: () {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('API_BASE_URL not configured'), findsOneWidget);
+    expect(find.byIcon(Icons.cloud_off), findsOneWidget);
   });
 }

@@ -19,6 +19,15 @@ import 'package:crypto/crypto.dart';
 //    - Decodes signature, validates claims, and enforces granular IAM permissions.
 // =========================================================================
 
+// Global configurable API base URL via --dart-define
+const String apiBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: String.fromEnvironment(
+    'API_URL',
+    defaultValue: '',
+  ),
+);
+
 void main() {
   runApp(const MyApp());
 }
@@ -151,6 +160,38 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: TextStyle(color: Colors.white70, fontSize: 13),
                     ),
                     const SizedBox(height: 24),
+                    if (apiBaseUrl.isEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.redAccent.withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(
+                              Icons.cloud_off,
+                              color: Colors.redAccent,
+                              size: 20,
+                            ),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'API_BASE_URL not configured at build time (--dart-define=API_BASE_URL=https://<api-id>.execute-api.<region>.amazonaws.com/Prod).',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     if (buildTimeApiKey.isEmpty) ...[
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -244,6 +285,8 @@ class TelemetryScreen extends StatefulWidget {
   final String apiKey;
   final VoidCallback onLogout;
 
+
+
   const TelemetryScreen({
     super.key,
     required this.apiKey,
@@ -265,14 +308,7 @@ class _TelemetryScreenState extends State<TelemetryScreen> {
   Timer? _pollingTimer;
   int _ticksCount = 0;
 
-  // Configurable API base URL & default EC2 instance ID via --dart-define
-  static const String apiBaseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: String.fromEnvironment(
-      'API_URL',
-      defaultValue: '',
-    ),
-  );
+
 
   static const String defaultInstanceId = String.fromEnvironment(
     'EC2_INSTANCE_ID',
@@ -292,6 +328,7 @@ class _TelemetryScreenState extends State<TelemetryScreen> {
       : '$apiBaseUrl/ExecuteCommand';
 
   Future<void> fetchServers() async {
+    if (apiBaseUrl.isEmpty) return;
     try {
       final response = await http.get(
         Uri.parse(getServersUrl),
@@ -310,6 +347,7 @@ class _TelemetryScreenState extends State<TelemetryScreen> {
   }
 
   Future<void> fetchTelemetry() async {
+    if (apiBaseUrl.isEmpty) return;
     try {
       String targetUrl = getMetricsUrl;
       if (selectedServer != null &&
@@ -712,9 +750,43 @@ class _TelemetryScreenState extends State<TelemetryScreen> {
           ),
         ],
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
+      body: apiBaseUrl.isEmpty
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.cloud_off,
+                      size: 64,
+                      color: Colors.redAccent,
+                    ),
+                    SizedBox(height: 16),
+                    Text(
+                      'API_BASE_URL not configured',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Please launch the app with your API Gateway endpoint:\n\n'
+                      'flutter run --dart-define=API_BASE_URL=https://<api-id>.execute-api.ap-southeast-2.amazonaws.com/Prod\n\n'
+                      'Or build release APK with:\n'
+                      'flutter build apk --release --dart-define=API_BASE_URL=https://<api-id>.execute-api.ap-southeast-2.amazonaws.com/Prod',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
