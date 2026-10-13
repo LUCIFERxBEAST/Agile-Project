@@ -1,44 +1,95 @@
-name: CI Pipeline
+name: CI
 
 on:
   push:
-    branches: [ main, dev ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
 jobs:
-  build-and-test:
-    name: Build, Test & Validate Infrastructure
+  cpp-agent-and-tests:
+    name: C++ Telemetry Agent Build & Tests
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install C++ Build Dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libcurl4-openssl-dev nlohmann-json3-dev
+          sudo apt-get install -y libcurl4-openssl-dev build-essential
 
       - name: Compile C++ Telemetry Agent
-        run: |
-          cd backend/src
-          g++ -O2 -std=c++17 utility.cpp -o telemetry_agent -lcurl
-          ls -lh telemetry_agent
+        run: g++ -O2 -std=c++17 backend/src/utility.cpp -o telemetry_agent -lcurl
 
-      - name: Run C++ Unit Tests
+      - name: Compile & Run C++ Metrics Unit Tests
         run: |
-          cd backend/tests
-          g++ -O2 -std=c++17 test_metrics.cpp -o test_metrics
+          g++ -O2 -std=c++17 backend/tests/test_metrics.cpp -o test_metrics
           ./test_metrics
 
-      - name: Setup AWS SAM CLI
+  python-backend-tests:
+    name: Python Lambda Backend Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install boto3
+
+      - name: Run Backend Unit Tests
+        env:
+          EXPECTED_API_KEY: mock-ci-test-key
+          AWS_REGION: ap-southeast-2
+          DB_HOST: localhost
+          DB_NAME: testdb
+          DB_USER: testuser
+          DB_PASSWORD: testpassword
+          DB_PORT: '5432'
+        run: PYTHONPATH=backend/aws python -m unittest discover -s backend/aws -p "test_*.py"
+
+  flutter-frontend:
+    name: Flutter Analyze & Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install Flutter Dependencies
+        working-directory: ./flutter mobile frontend
+        run: flutter pub get
+
+      - name: Analyze Flutter Code
+        working-directory: ./flutter mobile frontend
+        run: flutter analyze
+
+      - name: Run Flutter Widget Tests
+        working-directory: ./flutter mobile frontend
+        run: flutter test
+
+  sam-validation:
+    name: AWS SAM Template Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up AWS SAM CLI
         uses: aws-actions/setup-sam@v2
         with:
           use-installer: true
 
-      - name: Validate SAM CloudFormation Template
-        env:
-          AWS_DEFAULT_REGION: ap-southeast-2
-        run: |
-          sam validate --template-file backend/aws/template.yaml --region ap-southeast-2
+      - name: Validate SAM Template (Lint Mode)
+        run: sam validate --template-file backend/aws/template.yaml --lint
