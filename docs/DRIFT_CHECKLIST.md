@@ -97,10 +97,9 @@ aws lambda get-function-configuration \
   --query 'Environment.Variables' \
   --output json | jq 'keys'
 ```
-- **Expected Keys**:
+- **Expected Keys in `Environment.Variables`**:
   ```json
   [
-    "AWS_REGION",
     "DB_HOST",
     "DB_NAME",
     "DB_PASSWORD",
@@ -109,7 +108,7 @@ aws lambda get-function-configuration \
     "EXPECTED_API_KEY"
   ]
   ```
-  *(Note: `EXPECTED_API_KEY` is mandatory for fail-closed authentication. If missing, Lambda returns HTTP 500).*
+  *(Note: `EXPECTED_API_KEY` is mandatory for fail-closed authentication. If missing, Lambda returns HTTP 500. `AWS_REGION` is a reserved AWS runtime environment variable automatically set to the execution region, e.g. `ap-southeast-2`, and is dynamically read by boto3 without requiring explicit template configuration or hardcoded fallback).*
 
 ### Option B: AWS Management Console
 1. Open the Lambda function in the **AWS Console**.

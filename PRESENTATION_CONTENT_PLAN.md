@@ -39,7 +39,7 @@
 
 ### Slide 5: Low-Overhead C++17 Telemetry Agent
 * **Zero-Allocation /proc Parsing**: Reads aggregate jiffies from /proc/stat and memory from /proc/meminfo. Measures differential tick delta: CPU% = (TotalDiff - IdleDiff) / TotalDiff * 100.
-* **Adaptive Diagnostic Burst Mode**: Under normal load (<80% CPU): streams minimal lightweight JSON. Under spike load (>=80% for 2 cycles): scans /proc/[pid]/stat and attaches top 3 offending processes.
+* **Adaptive Diagnostic Burst Mode**: Under normal load (<85% CPU): streams minimal lightweight JSON (136 bytes). Under spike load (>=85% for 2 cycles): scans /proc/[pid]/stat and attaches top 3 offending processes.
 * **Offline Resilience Queue**: If network connection drops, payloads are appended to offline_telemetry_queue.jsonl and automatically flushed upon reconnection.
 * **Production systemd Daemon**: Packaged as telemetry-agent.service with Restart=always, auto-booting on EC2 power-up without manual intervention.
 
@@ -53,7 +53,7 @@
 ---
 
 ### Slide 7: Multi-Layer Security & Remote Kill Guardrails
-1. **Protected Process Blocklist**: Hardcoded protection rejecting termination of critical OS binaries: systemd, init, sshd, dbus, dockerd, cron, telemetry_agent (HTTP 400).
+1. **Protected Process Blocklist**: Hardcoded protection rejecting termination of critical OS binaries: systemd, init, sshd, dbus, dockerd, cron, telemetry_agent (HTTP 403 Forbidden).
 2. **2-Minute Diagnostic Verification**: Lambda verifies against RDS that the target PID was actively observed in a high-CPU spike on that specific server_id in the last 120s (HTTP 403).
 3. **Cryptographic SHA-256 Token**: Operator UI calculates sha256(server_id:pid:cmd)[:8] and requires typing the 8-char verification code before enabling the Terminate trigger.
 4. **Immutable Audit Trail**: Every attempt (authorized, blocked, dispatched, failed) is recorded in kill_commands table with timestamps, caller API key, and SSM execution ID.

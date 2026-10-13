@@ -27,7 +27,7 @@ Feature / Component          | Review 1 Status (Proposal) | Final Review Status 
 --------------------------------------------------------------------------------
 1. C++ Kernel /proc Agent    | Basic Prototype            | Production systemd Daemon
 2. Offline Queue & Retry     | Deferred to Future Scope   | Implemented (JSONL auto-flush)
-3. Process Diagnostics       | Deferred to Future Scope   | Adaptive Burst (>=80% CPU spike)
+3. Process Diagnostics       | Deferred to Future Scope   | Adaptive Burst (>=85% CPU spike)
 4. Remote Incident Response  | Deferred to Future Scope   | AWS Systems Manager (SSM)
 5. Multi-Layer Security      | Deferred to Future Scope   | Blocklist + 2-min Verification + 8-char SHA-256 Token + Fail-Closed API Key
 6. Multi-Server Fleet UI     | Single-Agent Only          | Dynamic Server Dropdown & Multi-server time-series filtering
@@ -87,7 +87,7 @@ Feature / Component          | Review 1 Status (Proposal) | Final Review Status 
     1. telemetry_logs (id, server_id, cpu_percent, ram_percent, ram_used_mb, ram_total_mb, top_processes JSONB, created_at)
        INDEX: idx_telemetry_server_created ON (server_id, created_at DESC)
     2. kill_commands (id, server_id, pid, process_name, force_kill, authorized_by, reason, status, created_at)
-       INDEX: idx_kill_commands_server_created ON (server_id, created_at DESC)
+       INDEX: idx_kill_commands_server_created ON (instance_id, created_at DESC)
 
 [SERVICE 5] AWS SYSTEMS MANAGER - SSM (Agentless Remote Remediation)
 --------------------------------------------------------------------------------
@@ -106,7 +106,7 @@ Feature / Component          | Review 1 Status (Proposal) | Final Review Status 
 ================================================================================
 1. Granular Control & Adaptive Ingestion:
    - CloudWatch agent streams generic metrics on static intervals.
-   - Our C++ agent uses differential kernel ticks from /proc/stat and /proc/meminfo (<0.5% CPU overhead), and dynamically attaches top 3 offending process diagnostics ONLY during sustained spikes (>=80% CPU for 2 cycles).
+   - Our C++ agent uses differential kernel ticks from /proc/stat and /proc/meminfo (<0.5% CPU overhead), and dynamically attaches top 3 offending process diagnostics ONLY during sustained spikes (>=85% CPU for 2 cycles).
 
 2. Active Remote Incident Orchestration:
    - CloudWatch is passive monitoring only.
@@ -122,11 +122,11 @@ Layer 1: OS Protected Process Blocklist
   - Hardcoded server-side protection preventing termination of:
     systemd, init, sshd, dbus, dbus-daemon, networkmanager, dockerd, containerd,
     cron, rsyslogd, telemetry_agent, [kernel]
-  - Returns HTTP 400 Bad Request if attempted.
+  - Returns HTTP 403 Forbidden if attempted (Execution Rejected: Process <name> is protected).
 
 Layer 2: 2-Minute Diagnostic Telemetry Verification
   - Lambda verifies against RDS that the target PID was actively observed in
-    high-CPU diagnostics (>80%) on that specific server_id in the last 120s.
+    high-CPU diagnostics (>=85%) on that specific server_id in the last 120s.
   - Returns HTTP 403 Forbidden if unverified or PID guessing is attempted.
 
 Layer 3: Cryptographic 8-Character SHA-256 Confirmation Token
@@ -169,7 +169,7 @@ SLIDE 4: End-to-End System Architecture
 
 SLIDE 5: C++17 Telemetry Agent Deep Dive
 - Zero-Allocation /proc parsing (/proc/stat, /proc/meminfo).
-- Adaptive Burst Mode: Normal load (<80%) sends lightweight JSON; Spike load (>=80% for 2 cycles) attaches top 3 processes.
+- Adaptive Burst Mode: Normal load (<85%) sends lightweight JSON (136 bytes); Spike load (>=85% for 2 cycles) attaches top 3 processes.
 - Offline Queue: Saves un-sent metrics to JSONL file during network drops, auto-flushes on reconnect.
 - systemd Daemon: telemetry-agent.service with Restart=always.
 
@@ -224,9 +224,9 @@ Step 1: Kernel Metrics Capture (Every 3 seconds on EC2)
   - Computes exact differential CPU% using: (TotalDiff - IdleDiff) / TotalDiff * 100.
 
 Step 2: Adaptive Spike Detection & Dynamic Process Attachment
-  - If CPU usage is normal (<80%): Agent builds a lightweight JSON payload (~180 bytes)
+  - If CPU usage is normal (<85%): Agent builds a lightweight JSON payload (136 bytes)
     with only aggregate metrics (server_id, cpu_percent, ram_percent, timestamp).
-  - If CPU exceeds 80% for >= 2 consecutive cycles (6s sustained spike):
+  - If CPU exceeds 85% for >= 2 consecutive cycles (10s sustained spike):
     Agent scans /proc/[pid]/stat, calculates per-process CPU shares, extracts command
     lines from /proc/[pid]/cmdline, and dynamically attaches top_processes to the payload.
 

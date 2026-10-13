@@ -15,12 +15,13 @@ Welcome to the central documentation hub for the **Cloud-Native Linux Telemetry 
 | **[04. Next Steps & Action Roadmap](./04_NEXT_STEPS_AND_ROADMAP.md)** | Current production status and future enhancement roadmap (ML anomaly detection, auto-scaling, automated auto-kill policies). |
 | **[05. Guardrails & Remote Remediation](./05_GUARDRAILS_AND_REMEDIATION.md)** | Detailed specification of the 4-layer kill guardrail (blocklist, recent-spike verification, SHA-256 token, audit logging) and AWS SSM Run Command execution path. |
 | **[Verified Implementation Facts](./VERIFIED_FACTS.md)** | Code-verified architectural values, exact line references, parameters, and schema details. |
+| **[AWS Infrastructure Drift Checklist](./DRIFT_CHECKLIST.md)** | Read-only verification checklist and AWS CLI validation procedures. |
 
 ---
 
 ## 🏗️ High-Level System Architecture
 
-![Cloud-Native Linux Telemetry Architecture](images/architecture.png)
+*(Refer to the ASCII Architecture Diagram in root [`README.md`](../README.md#%EF%B8%8F-high-level-system-architecture) and technical specification in [`01_ARCHITECTURE_AND_SYSTEM_DESIGN.md`](./01_ARCHITECTURE_AND_SYSTEM_DESIGN.md))*
 
 ### Architectural Flow & Control Plane
 1. **Telemetry Telemetry Path**:
