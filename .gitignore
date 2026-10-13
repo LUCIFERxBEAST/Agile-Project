@@ -4,6 +4,8 @@
 .env.*
 !.env.example
 !.env.local.example
+env.local.json
+**/env.local.json
 samconfig.toml
 
 # AWS & Deployment Packages
@@ -12,6 +14,7 @@ deployment_package.zip
 
 # C++ Build Outputs & Executables
 telemetry_agent
+test_metrics
 a.out
 *.o
 *.a
@@ -20,13 +23,15 @@ build/
 bin/
 obj/
 
-# Local Telemetry Queue
+# Local Telemetry Queue & Offline Logs
 offline_queue.jsonl
+offline_telemetry_queue.jsonl
+*.jsonl
 
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
+*.class
 *.venv
 venv/
 
