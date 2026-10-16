@@ -13,10 +13,10 @@ backend/
 │   └── Dockerfile         # Multi-stage Docker container build for the agent
 ├── aws/
 │   ├── lambda_function.py # Serverless handler (API key auth, guardrails, RDS, SSM dispatch)
-│   ├── template.yaml      # AWS SAM infrastructure-as-code template
+│   ├── template.yaml      # AWS SAM infrastructure blueprint (validated in CI)
 │   ├── schema.sql         # PostgreSQL schema (telemetry_logs JSONB & kill_commands audit)
 │   ├── test_lambda_function.py # 16/16 Unit testing suite
-│   ├── deploy_aws.sh      # Automated packaging and deployment script
+│   ├── deploy_aws.sh      # Packaging script for manual Lambda deployment via AWS CLI / Console
 │   └── env.local.json     # SAM local test environment configuration
 └── README.md
 ```

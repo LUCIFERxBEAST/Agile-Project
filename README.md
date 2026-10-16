@@ -11,15 +11,12 @@ Comprehensive documentation is available in the [`docs/`](./docs/README.md) dire
 | Document | Description |
 | :--- | :--- |
 | **[01. Architecture & System Design](./docs/01_ARCHITECTURE_AND_SYSTEM_DESIGN.md)** | Full technical breakdown of all layers: C++ Agent, AWS Lambda, API Gateway, Amazon RDS PostgreSQL, and Flutter Mobile Dashboard. |
-| **[02. Setup & Deployment Guide](./docs/02_SETUP_AND_DEPLOYMENT_GUIDE.md)** | Step-by-step instructions to provision Amazon RDS, deploy AWS Lambda, configure systemd daemon, and launch Flutter app. |
+| **[02. Setup & Deployment Guide](./docs/02_SETUP_AND_DEPLOYMENT_GUIDE.md)** | Step-by-step instructions to configure systemd daemon, package Lambda code, and launch Flutter app. |
 | **[03. Testing & Verification](./docs/03_TESTING_AND_VERIFICATION.md)** | Complete testing protocols, unit test suites, synthetic load tests (`stress-ng`), and local sandbox verification. |
 | **[04. Roadmap & Status](./docs/04_NEXT_STEPS_AND_ROADMAP.md)** | Delivery matrix across all review milestones and future enhancements (ML anomaly detection, auto-kill policies). |
 | **[05. Guardrails & Remote Remediation](./docs/05_GUARDRAILS_AND_REMEDIATION.md)** | Deep dive into the 4-layer kill guardrail (blocklist, recent telemetry verification, SHA-256 tokens, audit trail) and AWS SSM. |
-| **[Verified Facts & Line References](./docs/VERIFIED_FACTS.md)** | Single source of truth with verbatim line numbers, parameter names, and schema definitions. |
+| **[Verified Implementation Facts](./docs/VERIFIED_FACTS.md)** | Code-verified architectural values, exact line references, parameters, and schema definitions. |
 | **[AWS Infrastructure Drift Checklist](./docs/DRIFT_CHECKLIST.md)** | Read-only commands to verify live cloud deployment against repository definitions. |
-| **[Presentation Content & Speaking Notes](./FINAL_PRESENTATION_DETAILS.txt)** | Comprehensive slide blueprints, talking points, architecture matrices, and viva defense notes. |
-| **[Presentation Deck Audit Checklist](./PPT_CHANGES.md)** | Review-aligned delta audit detailing slide corrections and code alignments. |
-| **[Verification & Test Report](./TEST_REPORT.md)** | Empirical test outputs across security, edge queue, and serverless infrastructure. |
 
 ---
 
@@ -87,12 +84,20 @@ Comprehensive documentation is available in the [`docs/`](./docs/README.md) dire
 
 ---
 
+## ⚙️ DevOps & Deployment Model
+
+- **CI as Quality Gate**: GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request to test C++ compilation, execute backend unit tests, perform Flutter widget tests and static analysis, and lint the AWS SAM template (`sam validate --lint`).
+- **IaC Architectural Blueprint**: `backend/aws/template.yaml` serves as the declarative Infrastructure-as-Code blueprint validated in CI.
+- **Manual Deployment Governance**: Cloud infrastructure is provisioned through the AWS Management Console to maintain tight budget oversight and stay within AWS Free Tier limits. Code updates are packaged via `backend/aws/deploy_aws.sh` and deployed using `aws lambda update-function-code` or direct Console upload.
+
+---
+
 ## 🧪 Verification & Test Results
 
 - **Backend Unit Tests**: **16 / 16 passed** (`python3 -m unittest backend/aws/test_lambda_function.py`)
 - **Frontend Widget Tests**: **4 / 4 passed** (`flutter test`)
 - **Static Analysis**: **0 issues found** (`flutter analyze`)
-- **Full Verification Report**: See [`TEST_REPORT.md`](./TEST_REPORT.md)
+- **Testing Protocols & Guide**: See [`docs/03_TESTING_AND_VERIFICATION.md`](./docs/03_TESTING_AND_VERIFICATION.md)
 
 ---
 

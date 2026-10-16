@@ -10,7 +10,7 @@ Welcome to the central documentation hub for the **Cloud-Native Linux Telemetry 
 | Document | Description |
 | :--- | :--- |
 | **[01. Architecture & System Design](./01_ARCHITECTURE_AND_SYSTEM_DESIGN.md)** | Full technical breakdown of all layers: C++ Agent, AWS Lambda, API Gateway, Amazon RDS PostgreSQL, and Flutter Mobile Dashboard. |
-| **[02. Setup & Deployment Guide](./02_SETUP_AND_DEPLOYMENT_GUIDE.md)** | Step-by-step instructions to provision Amazon RDS, deploy AWS Lambda via AWS SAM, configure systemd on Linux/EC2, and launch the mobile app. |
+| **[02. Setup & Deployment Guide](./02_SETUP_AND_DEPLOYMENT_GUIDE.md)** | Step-by-step instructions to configure systemd on Linux/EC2, package Lambda code, and launch the mobile app. |
 | **[03. Testing & Verification](./03_TESTING_AND_VERIFICATION.md)** | Verification protocols for unit tests, offline queue caching, auto-retry flush tests, crash recovery validation, and synthetic load testing (`stress-ng`). |
 | **[04. Next Steps & Action Roadmap](./04_NEXT_STEPS_AND_ROADMAP.md)** | Current production status and future enhancement roadmap (ML anomaly detection, auto-scaling, automated auto-kill policies). |
 | **[05. Guardrails & Remote Remediation](./05_GUARDRAILS_AND_REMEDIATION.md)** | Detailed specification of the 4-layer kill guardrail (blocklist, recent-spike verification, SHA-256 token, audit logging) and AWS SSM Run Command execution path. |
